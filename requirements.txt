@@ -9,7 +9,7 @@ pytest
 python-dotenv
 ruff
 scikit-learn
--e .
+
 
 
 fastapi==0.111.0
