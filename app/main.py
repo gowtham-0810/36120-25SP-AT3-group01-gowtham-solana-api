@@ -15,6 +15,19 @@ BASE_DIR = Path(__file__).resolve().parent      # /app/app
 PROJECT_ROOT = BASE_DIR.parent                  # /app
 MODEL_PATH = PROJECT_ROOT / "models" / "tuned_elasticnet_model.joblib"
 
+# 👇 the order we will ALWAYS send to the model
+FEATURE_ORDER = [
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "marketCap",
+    "price_momentum",
+    "price_range_pct",
+    "volume_to_mc_ratio",
+]
+
 model = None
 
 
@@ -41,10 +54,6 @@ class SolanaFeatures(BaseModel):
 
 
 def build_features(payload: dict) -> pd.DataFrame:
-    """
-    Take the raw incoming dict and build ALL features
-    that the model was trained on.
-    """
     open_ = payload["open"]
     high_ = payload["high"]
     low_ = payload["low"]
@@ -52,19 +61,11 @@ def build_features(payload: dict) -> pd.DataFrame:
     volume_ = payload.get("volume", 0.0) or 0.0
     mc_ = payload.get("marketCap", 0.0) or 0.0
 
-    # derived features (simple, safe versions)
+    # derived
     price_momentum = close_ - open_
-    if low_ != 0:
-        price_range_pct = (high_ - low_) / low_
-    else:
-        price_range_pct = 0.0
+    price_range_pct = (high_ - low_) / low_ if low_ != 0 else 0.0
+    volume_to_mc_ratio = (volume_ / mc_) if mc_ != 0 else 0.0
 
-    if mc_ != 0:
-        volume_to_mc_ratio = volume_ / mc_
-    else:
-        volume_to_mc_ratio = 0.0
-
-    # IMPORTANT: order + names must match training
     data = {
         "open": open_,
         "high": high_,
@@ -77,7 +78,12 @@ def build_features(payload: dict) -> pd.DataFrame:
         "volume_to_mc_ratio": volume_to_mc_ratio,
     }
 
-    return pd.DataFrame([data])
+    df = pd.DataFrame([data])
+
+    # 👇 force exact order (this is what fixes your error)
+    df = df.reindex(columns=FEATURE_ORDER)
+
+    return df
 
 
 @app.get("/")
@@ -116,7 +122,6 @@ def predict_solana():
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
-    # this is just a dummy row
     sample_row = {
         "open": 142.35,
         "high": 145.10,
@@ -147,6 +152,7 @@ def predict_solana_post(features: SolanaFeatures):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     df = build_features(features.model_dump())
+
     try:
         y_pred = model.predict(df)[0]
     except Exception as e:
