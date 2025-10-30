@@ -10,21 +10,21 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# paths
-BASE_DIR = Path(__file__).resolve().parent      # /app/app
-PROJECT_ROOT = BASE_DIR.parent                  # /app
+# --- Paths ---
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = BASE_DIR.parent
 MODEL_PATH = PROJECT_ROOT / "models" / "tuned_elasticnet_model.joblib"
 
-# 👇 the order we will ALWAYS send to the model
-FEATURE_ORDER = [
+# --- Feature order (must match training) ---
+FINAL_FEATURES = [
     "open",
     "high",
     "low",
     "close",
     "volume",
     "marketCap",
-    "price_momentum",
     "price_range_pct",
+    "price_momentum",
     "volume_to_mc_ratio",
 ]
 
@@ -32,6 +32,7 @@ model = None
 
 
 def load_model():
+    """Load the trained model into memory on startup."""
     global model
     if MODEL_PATH.exists():
         model = joblib.load(MODEL_PATH)
@@ -54,6 +55,7 @@ class SolanaFeatures(BaseModel):
 
 
 def build_features(payload: dict) -> pd.DataFrame:
+    """Generate engineered features in the same format as training."""
     open_ = payload["open"]
     high_ = payload["high"]
     low_ = payload["low"]
@@ -61,10 +63,10 @@ def build_features(payload: dict) -> pd.DataFrame:
     volume_ = payload.get("volume", 0.0) or 0.0
     mc_ = payload.get("marketCap", 0.0) or 0.0
 
-    # derived
-    price_momentum = close_ - open_
+    # Derived features
     price_range_pct = (high_ - low_) / low_ if low_ != 0 else 0.0
-    volume_to_mc_ratio = (volume_ / mc_) if mc_ != 0 else 0.0
+    price_momentum = close_ - open_
+    volume_to_mc_ratio = volume_ / mc_ if mc_ != 0 else 0.0
 
     data = {
         "open": open_,
@@ -73,16 +75,13 @@ def build_features(payload: dict) -> pd.DataFrame:
         "close": close_,
         "volume": volume_,
         "marketCap": mc_,
-        "price_momentum": price_momentum,
         "price_range_pct": price_range_pct,
+        "price_momentum": price_momentum,
         "volume_to_mc_ratio": volume_to_mc_ratio,
     }
 
     df = pd.DataFrame([data])
-
-    # 👇 force exact order (this is what fixes your error)
-    df = df.reindex(columns=FEATURE_ORDER)
-
+    df = df.reindex(columns=FINAL_FEATURES)  # enforce order
     return df
 
 
@@ -152,7 +151,6 @@ def predict_solana_post(features: SolanaFeatures):
         raise HTTPException(status_code=500, detail="Model not loaded")
 
     df = build_features(features.model_dump())
-
     try:
         y_pred = model.predict(df)[0]
     except Exception as e:
