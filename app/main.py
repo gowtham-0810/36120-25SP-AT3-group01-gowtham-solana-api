@@ -10,8 +10,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
-BASE_DIR = Path(__file__).resolve().parent
-MODEL_PATH = BASE_DIR / "models" / "tuned_elasticnet_model.joblib"
+# ── PATHS ─────────────────────────────────────────────────────────────────
+# /app/app/main.py  → parent = /app/app  → parent.parent = /app
+BASE_DIR = Path(__file__).resolve().parent      # /app/app
+PROJECT_ROOT = BASE_DIR.parent                  # /app
+MODEL_PATH = PROJECT_ROOT / "models" / "tuned_elasticnet_model.joblib"
 
 model = None
 
@@ -79,8 +82,8 @@ def predict_solana():
         "high": 145.10,
         "low": 140.80,
         "close": 143.50,
-        "volume": 58234567.0,
-        "marketCap": 65000000000.0,
+        "volume": 58_234_567.0,
+        "marketCap": 65_000_000_000.0,
     }
 
     df = pd.DataFrame([sample_row])
