@@ -10,8 +10,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# ── PATHS ─────────────────────────────────────────────────────────────────
-# /app/app/main.py  → parent = /app/app  → parent.parent = /app
+# paths
 BASE_DIR = Path(__file__).resolve().parent      # /app/app
 PROJECT_ROOT = BASE_DIR.parent                  # /app
 MODEL_PATH = PROJECT_ROOT / "models" / "tuned_elasticnet_model.joblib"
@@ -39,6 +38,46 @@ class SolanaFeatures(BaseModel):
     close: float
     volume: float | None = None
     marketCap: float | None = None
+
+
+def build_features(payload: dict) -> pd.DataFrame:
+    """
+    Take the raw incoming dict and build ALL features
+    that the model was trained on.
+    """
+    open_ = payload["open"]
+    high_ = payload["high"]
+    low_ = payload["low"]
+    close_ = payload["close"]
+    volume_ = payload.get("volume", 0.0) or 0.0
+    mc_ = payload.get("marketCap", 0.0) or 0.0
+
+    # derived features (simple, safe versions)
+    price_momentum = close_ - open_
+    if low_ != 0:
+        price_range_pct = (high_ - low_) / low_
+    else:
+        price_range_pct = 0.0
+
+    if mc_ != 0:
+        volume_to_mc_ratio = volume_ / mc_
+    else:
+        volume_to_mc_ratio = 0.0
+
+    # IMPORTANT: order + names must match training
+    data = {
+        "open": open_,
+        "high": high_,
+        "low": low_,
+        "close": close_,
+        "volume": volume_,
+        "marketCap": mc_,
+        "price_momentum": price_momentum,
+        "price_range_pct": price_range_pct,
+        "volume_to_mc_ratio": volume_to_mc_ratio,
+    }
+
+    return pd.DataFrame([data])
 
 
 @app.get("/")
@@ -77,6 +116,7 @@ def predict_solana():
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
+    # this is just a dummy row
     sample_row = {
         "open": 142.35,
         "high": 145.10,
@@ -86,7 +126,7 @@ def predict_solana():
         "marketCap": 65_000_000_000.0,
     }
 
-    df = pd.DataFrame([sample_row])
+    df = build_features(sample_row)
 
     try:
         y_pred = model.predict(df)[0]
@@ -96,7 +136,7 @@ def predict_solana():
     return {
         "token": "SOL",
         "prediction": float(y_pred),
-        "features_used": sample_row,
+        "features_used": df.to_dict(orient="records")[0],
         "model_version": "v1",
     }
 
@@ -106,7 +146,7 @@ def predict_solana_post(features: SolanaFeatures):
     if model is None:
         raise HTTPException(status_code=500, detail="Model not loaded")
 
-    df = pd.DataFrame([features.model_dump()])
+    df = build_features(features.model_dump())
     try:
         y_pred = model.predict(df)[0]
     except Exception as e:
@@ -115,6 +155,6 @@ def predict_solana_post(features: SolanaFeatures):
     return {
         "token": "SOL",
         "prediction": float(y_pred),
-        "input": features.model_dump(),
+        "input": df.to_dict(orient="records")[0],
         "model_version": "v1",
     }
