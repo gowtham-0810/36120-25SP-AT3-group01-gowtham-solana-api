@@ -39,6 +39,11 @@ This project provides:
 ├── .gitignore <- Ignore patterns for git
 └── tests
 ```
+🌐Deployed Link:
+
+https://three6120-25sp-at3-group01-gowtham.onrender.com/
+
+https://three6120-25sp-at3-group01-gowtham.onrender.com/predict/solana
 
 --------
 
